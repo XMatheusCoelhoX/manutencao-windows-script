@@ -1,0 +1,9 @@
+# Normaliza quebras de linha: texto vira LF no repositorio, mas o Windows
+# continua recebendo CRLF no checkout (evita os avisos "LF will be replaced
+# by CRLF" e mantem os arquivos .ps1/.md abrindo corretamente no Notepad).
+* text=auto
+
+*.ps1 text eol=crlf
+*.md  text eol=crlf
+*.txt text eol=crlf
+*.pdf binary
