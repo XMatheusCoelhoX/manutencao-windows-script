@@ -1,0 +1,3 @@
+# Relatórios e logs gerados em tempo de execução (não fazem parte do código-fonte)
+Relatorio_Manutencao_*.txt
+Log_Manutencao_*.txt

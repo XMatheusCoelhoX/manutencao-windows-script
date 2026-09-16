@@ -1,0 +1,223 @@
+# ==============================================================================
+# SYSTEM MAINTENANCE & AUDIT PLATFORM v4.0 (REAL-TIME TICK & STREAM FIX)
+# ==============================================================================
+
+if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+    Write-Host "[!] Solicitando credenciais de Administrador..." -ForegroundColor Yellow
+    Start-Process PowerShell -Verb RunAs "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+    exit
+}
+
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$Host.UI.RawUI.WindowTitle = "System Maintenance Platform - Dashboard v4.0"
+
+Clear-Host
+Write-Host "==========================================================================" -ForegroundColor Cyan
+Write-Host "  SYSTEM MAINTENANCE PLATFORM v4.0               AUDIT & DIAGNOSTICS" -ForegroundColor Cyan
+Write-Host "==========================================================================" -ForegroundColor Cyan
+Write-Host ""
+
+$NomeTecnico = Read-Host "  Tecnico Responsavel "
+if ([string]::IsNullOrWhiteSpace($NomeTecnico)) { $NomeTecnico = "Tecnico Nao Identificado" }
+
+$RegistroTecnico = Read-Host "  Matricula / ID      "
+if ([string]::IsNullOrWhiteSpace($RegistroTecnico)) { $RegistroTecnico = "N/A" }
+
+$EmpresaCliente = Read-Host "  Cliente / Empresa   "
+if ([string]::IsNullOrWhiteSpace($EmpresaCliente)) { $EmpresaCliente = "Uso Interno" }
+
+$DataInicio = Get-Date
+$TempoInicioGeral = [System.Diagnostics.Stopwatch]::StartNew()
+$Computador = $env:COMPUTERNAME
+$OSInfo = (Get-CimInstance Win32_OperatingSystem).Caption
+
+$PipelineData = [ordered]@{
+    "1. DISM CheckHealth"      = @{ Status = "PENDENTE"; Pct = "0%";   Time = "--:--" }
+    "2. DISM ScanHealth"       = @{ Status = "PENDENTE"; Pct = "0%";   Time = "--:--" }
+    "3. DISM RestoreHealth"    = @{ Status = "PENDENTE"; Pct = "0%";   Time = "--:--" }
+    "4. SFC /Scannow"          = @{ Status = "PENDENTE"; Pct = "0%";   Time = "--:--" }
+    "5. Flush Cache DNS"       = @{ Status = "PENDENTE"; Pct = "0%";   Time = "--:--" }
+    "6. Otimizacao de Disco"   = @{ Status = "PENDENTE"; Pct = "0%";   Time = "--:--" }
+    "7. Limpeza do Sistema"    = @{ Status = "PENDENTE"; Pct = "0%";   Time = "--:--" }
+    "8. Agendamento CHKDSK"    = @{ Status = "PENDENTE"; Pct = "0%";   Time = "--:--" }
+}
+
+function Render-UI {
+    param(
+        [int]$ProgressoGeral,
+        [string]$AcaoAtual = "Aguardando inicio..."
+    )
+    [Console]::SetCursorPosition(0,0)
+    $Elapsed = $TempoInicioGeral.Elapsed.ToString("hh\:mm\:ss")
+
+    $SepThin  = "--------------------------------------------------------------------------"
+    $SepThick = "=========================================================================="
+
+    Write-Host $SepThick -ForegroundColor Cyan
+    Write-Host "  SYSTEM MAINTENANCE PLATFORM v4.0               AUDIT & DIAGNOSTICS      " -ForegroundColor White
+    Write-Host $SepThick -ForegroundColor Cyan
+    
+    Write-Host "  TECNICO  : " -NoNewline -ForegroundColor DarkGray
+    Write-Host ("{0,-20}" -f $NomeTecnico) -NoNewline -ForegroundColor Yellow
+    Write-Host "ID    : " -NoNewline -ForegroundColor DarkGray
+    Write-Host ("{0,-12}" -f $RegistroTecnico) -NoNewline -ForegroundColor Yellow
+    Write-Host "TEMPO : " -NoNewline -ForegroundColor DarkGray
+    Write-Host "$Elapsed   " -ForegroundColor White
+
+    Write-Host "  CLIENTE  : " -NoNewline -ForegroundColor DarkGray
+    Write-Host ("{0,-20}" -f $EmpresaCliente) -NoNewline -ForegroundColor White
+    Write-Host "HOST  : " -NoNewline -ForegroundColor DarkGray
+    Write-Host ("{0,-25}" -f $Computador) -ForegroundColor White
+
+    Write-Host $SepThin -ForegroundColor DarkGray
+
+    $BarLength = 35
+    $Filled = [Math]::Round(($ProgressoGeral / 100) * $BarLength)
+    $Empty = $BarLength - $Filled
+    $BarText = ("#" * $Filled) + ("-" * $Empty)
+
+    Write-Host "  PROGRESSO: [" -NoNewline -ForegroundColor DarkGray
+    Write-Host $BarText -NoNewline -ForegroundColor Green
+    Write-Host ("] {0,3}%" -f $ProgressoGeral) -ForegroundColor Green
+    
+    Write-Host $SepThick -ForegroundColor Cyan
+    Write-Host "  ROUTINE PIPELINE                          STATUS       PROGRESS   TIME  " -ForegroundColor DarkCyan
+    Write-Host $SepThin -ForegroundColor DarkGray
+
+    foreach ($item in $PipelineData.Keys) {
+        $st = $PipelineData[$item].Status
+        $pct = $PipelineData[$item].Pct
+        $tm = $PipelineData[$item].Time
+
+        $LTask = "  {0,-38} {1,-13} {2,8} {3,8}  " -f $item, $st, $pct, $tm
+        
+        if ($st -eq "EM EXECUCAO") { Write-Host $LTask -ForegroundColor Yellow }
+        elseif ($st -eq "CONCLUIDO")  { Write-Host $LTask -ForegroundColor Green }
+        elseif ($st -eq "FALHA")      { Write-Host $LTask -ForegroundColor Red }
+        else                          { Write-Host $LTask -ForegroundColor Gray }
+    }
+
+    Write-Host $SepThin -ForegroundColor DarkGray
+    Write-Host "  STATUS   : " -NoNewline -ForegroundColor DarkGray
+    
+    # Tratamento avançado de encoding para remover caracteres corrompidos
+    $bytes = [System.Text.Encoding]::Default.GetBytes($AcaoAtual)
+    $cleanAcao = [System.Text.Encoding]::UTF8.GetString($bytes)
+    $cleanAcao = $cleanAcao -replace "[^\u0020-\u007E\u00C0-\u00FFºª°]", ""
+    if ($cleanAcao.Length -gt 58) { $cleanAcao = $cleanAcao.Substring(0, 55) + "..." }
+    
+    Write-Host ("{0,-58}" -f $cleanAcao) -ForegroundColor Yellow
+    Write-Host $SepThick -ForegroundColor Cyan
+}
+
+function Executar-ComandoComStream {
+    param(
+        [string]$Key,
+        [string]$FilePath,
+        [string]$Arguments,
+        [int]$PctGeralBase
+    )
+
+    $PipelineData[$Key].Status = "EM EXECUCAO"
+    $timer = [System.Diagnostics.Stopwatch]::StartNew()
+    Render-UI -ProgressoGeral $PctGeralBase -AcaoAtual "Iniciando $Key..."
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $FilePath
+    $psi.Arguments = $Arguments
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.StandardOutputEncoding = [System.Text.Encoding]::GetEncoding([System.Console]::OutputEncoding.CodePage)
+
+    $process = [System.Diagnostics.Process]::Start($psi)
+
+    while (-not $process.HasExited) {
+        # Atualiza o contador de segundos em tempo real na tela enquanto processa
+        $seconds = [Math]::Floor($timer.Elapsed.TotalSeconds)
+        $PipelineData[$Key].Time = "${seconds}s"
+
+        if ($process.StandardOutput.Peek() -ge 0) {
+            $line = $process.StandardOutput.ReadLine()
+            if (-not [string]::IsNullOrWhiteSpace($line)) {
+                if ($line -match "(\d{1,3}%)") {
+                    $PipelineData[$Key].Pct = $Matches[1]
+                }
+                Render-UI -ProgressoGeral $PctGeralBase -AcaoAtual $line.Trim()
+            }
+        }
+        Render-UI -ProgressoGeral $PctGeralBase -AcaoAtual "Processando $Key..."
+        Start-Sleep -Milliseconds 100
+    }
+
+    $process.WaitForExit()
+    $timer.Stop()
+
+    $secondsTotal = [Math]::Floor($timer.Elapsed.TotalSeconds)
+    if ($secondsTotal -eq 0) { $secondsTotal = 1 }
+    $PipelineData[$Key].Time = "${secondsTotal}s"
+
+    if ($process.ExitCode -eq 0) {
+        $PipelineData[$Key].Status = "CONCLUIDO"
+        $PipelineData[$Key].Pct = "100%"
+    } else {
+        $PipelineData[$Key].Status = "FALHA"
+    }
+
+    Render-UI -ProgressoGeral ($PctGeralBase + 10) -AcaoAtual "Finalizado: $Key"
+}
+
+Clear-Host
+Executar-ComandoComStream -Key "1. DISM CheckHealth"   -FilePath "DISM.exe" -Arguments "/Online /Cleanup-Image /CheckHealth"   -PctGeralBase 5
+Executar-ComandoComStream -Key "2. DISM ScanHealth"    -FilePath "DISM.exe" -Arguments "/Online /Cleanup-Image /ScanHealth"    -PctGeralBase 15
+Executar-ComandoComStream -Key "3. DISM RestoreHealth" -FilePath "DISM.exe" -Arguments "/Online /Cleanup-Image /RestoreHealth" -PctGeralBase 30
+Executar-ComandoComStream -Key "4. SFC /Scannow"       -FilePath "sfc.exe"  -Arguments "/scannow"                               -PctGeralBase 50
+
+$timerDns = [System.Diagnostics.Stopwatch]::StartNew()
+$PipelineData["5. Flush Cache DNS"].Status = "EM EXECUCAO"
+Render-UI -ProgressoGeral 70 -AcaoAtual "Esvaziando cache de DNS..."
+ipconfig /flushdns | Out-Null
+$timerDns.Stop()
+$PipelineData["5. Flush Cache DNS"].Status = "CONCLUIDO"
+$PipelineData["5. Flush Cache DNS"].Pct = "100%"
+$PipelineData["5. Flush Cache DNS"].Time = "$([Math]::Max(1, [Math]::Floor($timerDns.Elapsed.TotalSeconds)))s"
+
+$timerDisco = [System.Diagnostics.Stopwatch]::StartNew()
+$PipelineData["6. Otimizacao de Disco"].Status = "EM EXECUCAO"
+Render-UI -ProgressoGeral 80 -AcaoAtual "Otimizando unidades de disco..."
+Optimize-Volume -DriveLetter C -Defrag -ErrorAction SilentlyContinue | Out-Null
+$timerDisco.Stop()
+$PipelineData["6. Otimizacao de Disco"].Status = "CONCLUIDO"
+$PipelineData["6. Otimizacao de Disco"].Pct = "100%"
+$PipelineData["6. Otimizacao de Disco"].Time = "$([Math]::Max(1, [Math]::Floor($timerDisco.Elapsed.TotalSeconds)))s"
+
+$timerLimpeza = [System.Diagnostics.Stopwatch]::StartNew()
+$PipelineData["7. Limpeza do Sistema"].Status = "EM EXECUCAO"
+Render-UI -ProgressoGeral 90 -AcaoAtual "Limpando arquivos temporarios..."
+Remove-Item -Path "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
+$timerLimpeza.Stop()
+$PipelineData["7. Limpeza do Sistema"].Status = "CONCLUIDO"
+$PipelineData["7. Limpeza do Sistema"].Pct = "100%"
+$PipelineData["7. Limpeza do Sistema"].Time = "$([Math]::Max(1, [Math]::Floor($timerLimpeza.Elapsed.TotalSeconds)))s"
+
+$timerChkdsk = [System.Diagnostics.Stopwatch]::StartNew()
+$PipelineData["8. Agendamento CHKDSK"].Status = "EM EXECUCAO"
+Render-UI -ProgressoGeral 95 -AcaoAtual "Agendando verificação de disco..."
+cmd.exe /c "echo Y | chkdsk C: /f /r" | Out-Null
+$timerChkdsk.Stop()
+$PipelineData["8. Agendamento CHKDSK"].Status = "CONCLUIDO"
+$PipelineData["8. Agendamento CHKDSK"].Pct = "100%"
+$PipelineData["8. Agendamento CHKDSK"].Time = "$([Math]::Max(1, [Math]::Floor($timerChkdsk.Elapsed.TotalSeconds)))s"
+
+$TempoInicioGeral.Stop()
+Render-UI -ProgressoGeral 100 -AcaoAtual "Manutencao concluida com sucesso!"
+
+$DataFim = Get-Date
+$CaminhoRelatorio = "$env:USERPROFILE\Desktop\Relatorio_Manutencao_$($Computador).txt"
+"RELATORIO DE MANUTENCAO`nTecnico: $NomeTecnico`nCliente: $EmpresaCliente`nHost: $Computador`nInicio: $DataInicio`nFim: $DataFim" | Out-File -FilePath $CaminhoRelatorio -Encoding utf8
+
+Write-Host "`n  [V] PROCESSO CONCLUIDO!" -ForegroundColor Green
+Write-Host "  [V] RELATORIO GERADO EM: $CaminhoRelatorio" -ForegroundColor Cyan
+Write-Host "`n  Pressione qualquer tecla para sair..." -ForegroundColor Gray
+$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
